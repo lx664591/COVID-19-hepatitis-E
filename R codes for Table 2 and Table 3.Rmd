@@ -1,0 +1,191 @@
+---
+title: "R codes for Table 2 and Table 3"
+output: html_notebook
+---
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+
+Platform: aarch64-apple-darwin20 (64-bit)
+
+ATTENTION: Neural networks leverage randomness to allow the architecture to effectively learn the function being approximated — they are stochastic by design. This means the same neural network can be trained on the same data but still produce different results each time the code is run.
+
+#0.environment
+```{r}
+library(forecast)
+library(tseries)
+library(prophet)
+set.seed(10)
+Mape <- function(forecast, test)  {mean(abs( (forecast - test)/test ))}
+Rmse <- function(forecast, test)  {sqrt(mean((forecast - test)^2))}
+```
+
+#1.Table 2
+```{r}
+# raw data
+ts_data <- openxlsx::read.xlsx("./raw data for table 2:3.xlsx", sheet = 1, rows = 38:160, cols = 3)
+ts_data <- ts(ts_data, frequency = 12, start = c(2013,1))
+train_data <- window(ts_data, end = c(2018,12))
+test_data <- window(ts_data, start = c(2019,1), end = c(2019,12))
+
+# modeling
+# Arima
+arima_model <- auto.arima(train_data, seasonal = FALSE)
+# Fitting series
+Box.test(arima_model$fitted[,1], lag = 24, type = "Ljung-Box")
+adf.test(arima_model$fitted[,1], alternative = "stationary")
+# Fitting residuals
+Box.test(arima_model$residuals, lag = 24, type = "Ljung-Box")
+ks.test(scale(arima_model$residuals), "pnorm")
+
+# SArima
+sarima_model <- auto.arima(train_data, seasonal = TRUE)
+# Fitting series
+Box.test(sarima_model$fitted[,1], lag = 24, type = "Ljung-Box")
+adf.test(sarima_model$fitted[,1], alternative = "stationary")
+# Fitting residuals
+Box.test(sarima_model$residuals, lag = 24, type = "Ljung-Box")
+ks.test(scale(sarima_model$residuals), "pnorm")
+
+# ETS
+ets_model <- ets(train_data)
+# Fitting series
+Box.test(ets_model$fitted[,1], lag = 24, type = "Ljung-Box")
+adf.test(ets_model$fitted[,1], alternative = "stationary")
+# Fitting residuals
+Box.test(ets_model$residuals, lag = 24, type = "Ljung-Box")
+ks.test(scale(ets_model$residuals), "pnorm")
+
+# Holt-Winters
+holtwinters_model <- HoltWinters(train_data)
+holtwinters_forecast <- forecast(holtwinters_model, h = length(test_data), level = 95)
+# Fitting series
+Box.test(holtwinters_model$fitted[,1], lag = 24, type = "Ljung-Box")
+adf.test(holtwinters_model$fitted[,1], alternative = "stationary")
+# Fitting residuals
+Box.test(holtwinters_forecast$residuals[13:72], lag = 24, type = "Ljung-Box")
+ks.test(scale(holtwinters_forecast$residuals[13:72]), "pnorm")
+
+# TBATS
+tbats_model <- tbats(train_data)
+# Fitting series
+Box.test(tbats_model$fitted.values, lag = 24, type = "Ljung-Box")
+adf.test(tbats_model$fitted.values, alternative = "stationary")
+# Fitting residuals
+Box.test(tbats_model$errors, lag = 24, type = "Ljung-Box")
+ks.test(scale(tbats_model$errors), "pnorm")
+
+# STSM
+bsm_model <- StructTS(train_data, type = "BSM")
+# Fitting series
+Box.test(bsm_model$fitted[,1], lag = 24, type = "Ljung-Box")
+adf.test(bsm_model$fitted[,1], alternative = "stationary")
+# Fitting residuals
+bsm_model_residuals <- train_data - bsm_model$fitted[,1]
+Box.test(bsm_model_residuals, lag = 24, type = "Ljung-Box")
+ks.test(scale(bsm_model_residuals), "pnorm")
+
+# TSLM
+tslm_model <- tslm(train_data ~ trend + season)
+# Fitting series
+Box.test(tslm_model$fitted.values, lag = 24, type = "Ljung-Box")
+adf.test(tslm_model$fitted.values, alternative = "stationary")
+# Fitting residuals
+Box.test(tslm_model$residuals, lag = 24, type = "Ljung-Box")
+ks.test(scale(tslm_model$residuals), "pnorm")
+
+# prophet
+date_prophet <- seq(as.Date("2013-01-01"), as.Date("2018-12-01"), by = "month")
+train_prophet <- data.frame(ds = date_prophet, y = as.numeric(train_data))
+prophet_model <- prophet(train_prophet, growth = "linear", seasonality.mode =  "additive", changepoint.prior.scale = 0.03)
+future <- make_future_dataframe(prophet_model, period = 12, freq = "month")
+prophet_predict <- predict(prophet_model, future)
+prophet_model$fitted <- ts(prophet_predict$yhat[1:72], frequency = 12, start = c(2013,1))
+# Fitting series
+Box.test(prophet_model$fitted, lag = 24, type = "Ljung-Box")
+adf.test(prophet_model$fitted, alternative = "stationary")
+# Fitting residuals
+prophet_model_residuals <- train_data - prophet_model$fitted
+Box.test(prophet_model_residuals, lag = 24, type = "Ljung-Box")
+ks.test(scale(prophet_model_residuals), "pnorm")
+
+# NNAR
+nnar_model <- nnetar(train_data, repeats = 50, decay = 0.15)
+# Fitting series
+Box.test(nnar_model$fitted[13:72], lag = 24, type = "Ljung-Box")
+adf.test(nnar_model$fitted[13:72], alternative = "stationary")
+# Fitting residuals
+Box.test(nnar_model$residuals[13:72], lag = 24, type = "Ljung-Box")
+ks.test(scale(nnar_model$residuals[13:72]), "pnorm")
+```
+
+#2.Table 3
+```{r}
+# raw data
+ts_data <- openxlsx::read.xlsx("./raw data for table 2:3.xlsx", sheet = 1, rows = 38:160, cols = 3)
+ts_data <- ts(ts_data, frequency = 12, start = c(2013,1))
+train_data <- window(ts_data, end = c(2019,12))
+test_data <- window(ts_data, start = c(2020,1), end = c(2023,2))
+
+# Sarima
+sarima_model <- auto.arima(train_data, seasonal = TRUE)
+sarima_forecast <- forecast(sarima_model, h = length(test_data), level = 95)
+
+# Holt-Winters
+holtwinters_model <- HoltWinters(train_data)
+holtwinters_forecast <- forecast(holtwinters_model, h = length(test_data), level = 95)
+
+# NNAR
+nnar_model <- nnetar(train_data, repeats = 50, decay = 0.15)
+nnar_forecast <- forecast(nnar_model, h=length(test_data), PI = TRUE, npaths = 150, level = 95)
+
+# 2020.1-2020.5:[1:5]
+# 2020.6-2021.2:[6:14]
+# 2021.3-2022.11:[15:35]
+# 2022.12-2023.1:[36:37]
+# 2023.2:[38]
+model_period_error <- 
+data.frame(
+  sarima = c( 
+    round(Mape(sarima_forecast$mean[1:5], test_data[1:5]),4),
+    round(Mape(sarima_forecast$mean[6:14], test_data[6:14]),4),
+    round(Mape(sarima_forecast$mean[15:35], test_data[15:35]),4), 
+    round(Mape(sarima_forecast$mean[36:37], test_data[36:37]),4),
+    round(Mape(sarima_forecast$mean[38], test_data[38]),4),
+    round(Rmse(sarima_forecast$mean[1:5], test_data[1:5]),4),
+    round(Rmse(sarima_forecast$mean[6:14], test_data[6:14]),4),
+    round(Rmse(sarima_forecast$mean[15:35], test_data[15:35]),4), 
+    round(Rmse(sarima_forecast$mean[36:37], test_data[36:37]),4),
+    round(Rmse(sarima_forecast$mean[38], test_data[38]),4)
+            ),
+  holtwinters = c( 
+    round(Mape(holtwinters_forecast$mean[1:5], test_data[1:5]),4),
+    round(Mape(holtwinters_forecast$mean[6:14], test_data[6:14]),4),
+    round(Mape(holtwinters_forecast$mean[15:35], test_data[15:35]),4), 
+    round(Mape(holtwinters_forecast$mean[36:37], test_data[36:37]),4),
+    round(Mape(holtwinters_forecast$mean[38], test_data[38]),4),
+    round(Rmse(holtwinters_forecast$mean[1:5], test_data[1:5]),4),
+    round(Rmse(holtwinters_forecast$mean[6:14], test_data[6:14]),4),
+    round(Rmse(holtwinters_forecast$mean[15:35], test_data[15:35]),4), 
+    round(Rmse(holtwinters_forecast$mean[36:37], test_data[36:37]),4),
+    round(Rmse(holtwinters_forecast$mean[38], test_data[38]),4)
+               ),
+  nnar = c( 
+    round(Mape(nnar_forecast$mean[1:5], test_data[1:5]),4),
+    round(Mape(nnar_forecast$mean[6:14], test_data[6:14]),4),
+    round(Mape(nnar_forecast$mean[15:35], test_data[15:35]),4), 
+    round(Mape(nnar_forecast$mean[36:37], test_data[36:37]),4),
+    round(Mape(nnar_forecast$mean[38], test_data[38]),4),
+    round(Rmse(nnar_forecast$mean[1:5], test_data[1:5]),4),
+    round(Rmse(nnar_forecast$mean[6:14], test_data[6:14]),4),
+    round(Rmse(nnar_forecast$mean[15:35], test_data[15:35]),4), 
+    round(Rmse(nnar_forecast$mean[36:37], test_data[36:37]),4),
+    round(Rmse(nnar_forecast$mean[38], test_data[38]),4)
+            ),
+  row.names = c("mape:2020Jan-2020May","mape:2020Jun-2021Feb",
+                "mape:2021Mar-2022Nov","mape:2022Dec-2023Jan","mape:2023Feb",
+                "rmse:2020Jan-2020May","rmse:2020Jun-2021Feb",
+                "rmse:2021Mar-2022Nov","rmse:2022Dec-2023Jan","rmse:2023Feb")
+  )
+print(model_period_error)
+```
+
